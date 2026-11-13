@@ -1,0 +1,14 @@
+/data/
+__pycache__/
+*.pyc
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.mp4
+*.pkl
+*.log
+*.pdf
+.idea
+__pycache__/
+/.codegraph/
