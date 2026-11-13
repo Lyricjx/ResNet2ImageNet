@@ -1,5 +1,5 @@
 # ResNet2ImageNet
-A controlled ImageNet-1K classification study with ResNet-18 as the baseline. Four independent improvements are evaluated through comparisons and ablations, using a reproducible 10% training subset and the full validation set for Top-1 and Top-5 accuracy.
+A controlled ImageNet-1K classification study with ResNet-18 as the baseline. Some independent improvements are evaluated through comparisons and ablations, using a reproducible 10% training subset and the full validation set for Top-1 and Top-5 accuracy.
 
 ## 数据准备
 
