@@ -20,3 +20,5 @@ CUDA_VISIBLE_DEVICES=0 python tools/train_baseline.py \
 ```
 
 按机器实际情况修改 GPU 编号；`--data-root` 指向按上述步骤重建的子集。每次实验使用新的 `--output-dir`，避免覆盖已有结果。默认训练 90 轮，每轮在完整验证集上计算 Top-1 / Top-5。正常完成后，输出目录包含 `best.pt`、`last.pt`、`config.json`、`metrics.jsonl` 和 `train.log`。
+
+结果表使用验证集 Top-1 最佳的 `best.pt`：`best_top1` 和 `best_top5` 对应同一轮、同一个模型；`best_top5` 不是各轮 Top-5 的独立最大值。

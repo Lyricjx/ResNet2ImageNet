@@ -120,6 +120,20 @@ def save_checkpoint(path, state):
     torch.save(state, temporary)
     temporary.replace(path)
 
+def restore_best_top5(checkpoint, output_dir):
+    if "best_top5" in checkpoint:
+        return checkpoint["best_top5"]
+    metrics_path = output_dir / "metrics.jsonl"
+    if not metrics_path.exists():
+        raise FileNotFoundError(f"Cannot restore best_top5 without {metrics_path}")
+    with metrics_path.open() as file:
+        previous = [json.loads(line) for line in file if line.strip()]
+    previous = [row for row in previous if row["epoch"] <= checkpoint["epoch"]]
+    best = max(previous, key=lambda row: row["top1"], default=None)
+    if best is None or best["top1"] != checkpoint["best_top1"]:
+        raise ValueError("Checkpoint best_top1 does not match metrics.jsonl")
+    return best["top5"]
+
 class Tee:
     def __init__(self, *streams):
         self.streams = streams
@@ -169,6 +183,7 @@ def run_training(args, output_dir, run_started):
 
     start_epoch = 1
     best_top1 = -1.0
+    best_top5 = -1.0
     if args.resume is not None:
         checkpoint = torch.load(args.resume, map_location="cpu", weights_only=False)
         model.load_state_dict(checkpoint["model"])
@@ -176,6 +191,7 @@ def run_training(args, output_dir, run_started):
         scheduler.load_state_dict(checkpoint["scheduler"])
         start_epoch = checkpoint["epoch"] + 1
         best_top1 = checkpoint["best_top1"]
+        best_top5 = restore_best_top5(checkpoint, output_dir)
 
     config = {
         **{key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()},
@@ -201,16 +217,18 @@ def run_training(args, output_dir, run_started):
         is_best = metrics["top1"] > best_top1
         if is_best:
             best_top1 = metrics["top1"]
+            best_top5 = metrics["top5"]
         record = {
             "epoch": epoch, "lr": lr, "train_loss": train_loss,
-            "train_seconds": train_seconds, **metrics, "best_top1": best_top1,
+            "train_seconds": train_seconds, **metrics,
+            "best_top1": best_top1, "best_top5": best_top5,
         }
         with (output_dir / "metrics.jsonl").open("a") as file:
             file.write(json.dumps(record) + "\n")
         state = {
             "epoch": epoch, "model": model.state_dict(),
             "optimizer": optimizer.state_dict(), "scheduler": scheduler.state_dict(),
-            "best_top1": best_top1,
+            "best_top1": best_top1, "best_top5": best_top5,
         }
         save_checkpoint(output_dir / "last.pt", state)
         if is_best:
@@ -219,6 +237,7 @@ def run_training(args, output_dir, run_started):
             f"epoch={epoch} lr={lr:.5g} train_loss={train_loss:.4f} "
             f"val_loss={metrics['val_loss']:.4f} top1={metrics['top1']:.3f} "
             f"top5={metrics['top5']:.3f} best_top1={best_top1:.3f} "
+            f"best_top5={best_top5:.3f} "
             f"train_sec={train_seconds:.1f} val_sec={metrics['val_seconds']:.1f}",
             flush=True,
         )
