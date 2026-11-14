@@ -10,5 +10,6 @@
 .idea
 *.csv
 /data/
+/runs/
 __pycache__/
 /.codegraph/
