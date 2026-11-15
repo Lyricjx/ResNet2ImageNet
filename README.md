@@ -1,6 +1,34 @@
 # ResNet2ImageNet
 A controlled ImageNet-1K classification study with ResNet-18 as the baseline. Some independent improvements are evaluated through comparisons and ablations, using a reproducible 10% training subset and the full validation set for Top-1 and Top-5 accuracy.
 
+## 环境配置
+
+基线环境：Linux、NVIDIA RTX A6000、PyTorch 2.12.0+cu130、Torchvision 0.27.0+cu130。训练需要一张支持 BF16 的 CUDA GPU。
+
+1. 创建环境：
+
+```bash
+conda create -n yourenvname python=3.12
+conda activate yourenvname
+```
+
+2. 安装依赖：
+
+```bash
+python -m pip install torch==2.12.0 torchvision==0.27.0 --index-url https://download.pytorch.org/whl/cu130
+python -m pip install -r requirements.txt
+```
+
+   其他 CUDA 平台请参考 [PyTorch 官方安装命令](https://pytorch.org/get-started/previous-versions/)。
+
+3. 检查 GPU（将 `0` 改为要使用的编号）：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python -c 'import torch; print(torch.cuda.get_device_name(0), "BF16:", torch.cuda.is_bf16_supported())'
+```
+
+输出应显示 `BF16: True`。训练命令也需设置 `CUDA_VISIBLE_DEVICES`。
+
 ## 数据准备
 
 使用 ImageNet-1K（ILSVRC 2012）：每类固定种子 `16` 抽取约 10% 作为训练集，共 **128,124 张、1,000 类**；在完整的 **50,000 张验证图像**上报告 Top-1 / Top-5。官方 test 集无公开标签，本项目不使用。
