@@ -42,12 +42,13 @@ CUDA_VISIBLE_DEVICES=0 python -c 'import torch; print(torch.cuda.get_device_name
 在仓库根目录运行 Baseline（示例使用 GPU 0）：
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 python tools/train_baseline.py \
+CUDA_VISIBLE_DEVICES=0 nohup python tools/train_baseline.py \
   --data-root data/imagenet_10pct \
-  --output-dir runs/resnet18_baseline_seed16
+  --output-dir runs/resnet18_baseline_seed16 \
+  > baseline.log 2>&1 &
 ```
 
-按机器实际情况修改 GPU 编号；`--data-root` 指向按上述步骤重建的子集。每次实验使用新的 `--output-dir`，避免覆盖已有结果。默认训练 90 轮，每轮在完整验证集上计算 Top-1 / Top-5。正常完成后，输出目录包含 `best.pt`、`last.pt`、`config.json`、`metrics.jsonl` 和 `train.log`。
+按机器实际情况修改 GPU 编号；`--data-root` 指向按上述步骤重建的子集。每次实验使用新的 `--output-dir`，避免覆盖已有结果。默认训练 90 轮，每轮在完整验证集上计算 Top-1 / Top-5。日志由命令写入仓库根目录的 `baseline.log`，包含标准输出和错误输出；正常完成后，输出目录包含 `best.pt`、`last.pt`、`config.json` 和 `metrics.jsonl`。
 
 结果表使用验证集 Top-1 最佳的 `best.pt`：`best_top1` 和 `best_top5` 对应同一轮、同一个模型；`best_top5` 不是各轮 Top-5 的独立最大值。
 

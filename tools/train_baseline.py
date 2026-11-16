@@ -5,7 +5,6 @@ import json
 import random
 import sys
 import time
-from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 import numpy as np
@@ -134,19 +133,6 @@ def restore_best_top5(checkpoint, output_dir):
         raise ValueError("Checkpoint best_top1 does not match metrics.jsonl")
     return best["top5"]
 
-class Tee:
-    def __init__(self, *streams):
-        self.streams = streams
-
-    def write(self, message):
-        for stream in self.streams:
-            stream.write(message)
-        return len(message)
-
-    def flush(self):
-        for stream in self.streams:
-            stream.flush()
-
 def main():
     run_started = time.perf_counter()
     args = parse_args()
@@ -161,10 +147,7 @@ def main():
     if output_dir.exists() and any(output_dir.iterdir()) and args.resume is None:
         raise FileExistsError(f"Output directory is not empty: {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
-    log_mode = "a" if args.resume is not None else "w"
-    with (output_dir / "train.log").open(log_mode, buffering=1) as log_file:
-        with redirect_stdout(Tee(sys.stdout, log_file)), redirect_stderr(Tee(sys.stderr, log_file)):
-            run_training(args, output_dir, run_started)
+    run_training(args, output_dir, run_started)
 
 def run_training(args, output_dir, run_started):
     random.seed(args.seed)
