@@ -1,5 +1,4 @@
 """ImageNet-1K ResNet-18 baseline."""
-
 from torch import nn
 from torchvision.models import resnet18
 

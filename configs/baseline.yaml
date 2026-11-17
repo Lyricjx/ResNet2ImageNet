@@ -1,0 +1,34 @@
+# 默认值复现原 Baseline。相对路径以仓库根目录为基准。
+run:
+  data_root: data/imagenet_10pct
+  output_dir: runs/resnet18_baseline_seed16
+  epochs: 90
+  batch_size: 256
+  workers: 8
+  seed: 16
+  resume: "" # 续训时填写 last.pt 路径
+
+optimizer:
+  name: sgd
+  lr: 0.1
+  momentum: 0.9
+  weight_decay: 0.0001
+
+scheduler:
+  name: multistep
+  milestones: [] # 空列表按总轮数生成；90 轮时为 [30, 60, 80]
+  gamma: 0.1 # 每次衰减乘数
+
+augmentation:
+  name: basic
+  crop_scale: [0.08, 1.0]
+  crop_ratio: [0.75, 1.3333333333333333]
+  horizontal_flip: 0.5
+
+loss:
+  name: cross_entropy
+
+model:
+  name: resnet18
+
+# 当前仅实现以上 Baseline 策略。新增策略需先扩展对应的构建函数。

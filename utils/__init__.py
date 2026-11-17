@@ -1,4 +1,4 @@
-"""Utilities for plotting ResNet2ImageNet training logs."""
+"""Training configuration and plotting utilities for ResNet2ImageNet."""
 
 from .util_plot import (
     extract_accuracy_from_log,

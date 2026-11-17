@@ -1,6 +1,5 @@
 """Train the ResNet-18 baseline on the fixed ImageNet-1K subset."""
 
-import argparse
 import json
 import random
 import sys
@@ -15,36 +14,32 @@ from torchvision import __version__ as torchvision_version
 from torchvision import datasets, transforms
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from model import build_resnet18
+from model import build_model
+from utils.train_config import parse_training_args, training_signature
 
 MEAN = (0.485, 0.456, 0.406)
 STD = (0.229, 0.224, 0.225)
 
-def parse_args():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data-root", type=Path, required=True)
-    parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--epochs", type=int, default=90)
-    parser.add_argument("--batch-size", type=int, default=256)
-    parser.add_argument("--workers", type=int, default=8)
-    parser.add_argument("--lr", type=float, default=0.1)
-    parser.add_argument("--seed", type=int, default=16)
-    parser.add_argument("--resume", type=Path)
-    return parser.parse_args()
-
-def make_loaders(data_root, batch_size, workers, seed):
-    train_transform = transforms.Compose([
-        transforms.RandomResizedCrop(224),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(MEAN, STD),
-    ])
+def make_transforms(augmentation):
+    if augmentation["name"] != "basic":
+        raise ValueError(f"Unsupported augmentation: {augmentation['name']}; implement it in make_transforms")
+    train_steps = [
+        transforms.RandomResizedCrop(224, scale=tuple(augmentation["crop_scale"]),
+                                     ratio=tuple(augmentation["crop_ratio"])),
+        transforms.RandomHorizontalFlip(p=augmentation["horizontal_flip"]),
+    ]
+    train_steps.extend([transforms.ToTensor(), transforms.Normalize(MEAN, STD)])
+    train_transform = transforms.Compose(train_steps)
     val_transform = transforms.Compose([
         transforms.Resize(256),
         transforms.CenterCrop(224),
         transforms.ToTensor(),
         transforms.Normalize(MEAN, STD),
     ])
+    return train_transform, val_transform
+
+def make_loaders(data_root, batch_size, workers, augmentation):
+    train_transform, val_transform = make_transforms(augmentation)
     train_set = datasets.ImageFolder(data_root / "train", transform=train_transform)
     val_set = datasets.ImageFolder(data_root / "val", transform=val_transform)
     if len(train_set.classes) != 1000 or train_set.class_to_idx != val_set.class_to_idx:
@@ -61,6 +56,47 @@ def make_loaders(data_root, batch_size, workers, seed):
         pin_memory=True,
     )
     return train_loader, val_loader, generator
+
+def make_optimizer(parameters, optimizer_config):
+    if optimizer_config["name"] != "sgd":
+        raise ValueError(f"Unsupported optimizer: {optimizer_config['name']}; implement it in make_optimizer")
+    return torch.optim.SGD(parameters, **{key: value for key, value in optimizer_config.items() if key != "name"})
+
+def make_scheduler(optimizer, scheduler_config):
+    if scheduler_config["name"] == "multistep":
+        return torch.optim.lr_scheduler.MultiStepLR(
+            optimizer, milestones=scheduler_config["milestones"], gamma=scheduler_config["gamma"],
+        )
+    raise ValueError(f"Unsupported scheduler: {scheduler_config['name']}; implement it in make_scheduler")
+
+def make_criteria(loss_config):
+    if loss_config["name"] != "cross_entropy":
+        raise ValueError(f"Unsupported loss: {loss_config['name']}; implement it in make_criteria")
+    return nn.CrossEntropyLoss(), nn.CrossEntropyLoss()
+
+def check_resume_config(checkpoint, settings):
+    saved_config = checkpoint.get("training_config")
+    if saved_config is not None:
+        if saved_config != training_signature(settings):
+            raise ValueError("Resume training settings differ from the checkpoint; "
+                             "use its original config, or start a new experiment without --resume")
+        return
+    scheduler_state = checkpoint["scheduler"]
+    scheduler_config = settings["scheduler"]
+    if scheduler_config["name"] != "multistep":
+        raise ValueError("Legacy checkpoints require the original multistep scheduler")
+    expected = {"milestones": {epoch: 1 for epoch in scheduler_config["milestones"]},
+                "gamma": scheduler_config["gamma"]}
+    if any(scheduler_state.get(key) != value for key, value in expected.items()):
+        raise ValueError("Scheduler configuration does not match the legacy checkpoint")
+    for group in checkpoint["optimizer"]["param_groups"]:
+        for key in ("momentum", "weight_decay"):
+            if group.get(key) != settings["optimizer"][key]:
+                raise ValueError(f"Optimizer {key} does not match the legacy checkpoint")
+        if group.get("initial_lr") != settings["optimizer"]["lr"]:
+            raise ValueError("Initial LR does not match the legacy checkpoint")
+    print("WARNING: legacy checkpoint has no full training config; "
+          "verify the original augmentation, loss, seed and epoch settings before resuming.", flush=True)
 
 def train_epoch(model, loader, optimizer, criterion, device, epoch):
     model.train()
@@ -135,14 +171,14 @@ def restore_best_top5(checkpoint, output_dir):
 
 def main():
     run_started = time.perf_counter()
-    args = parse_args()
+    args = parse_training_args()
+    if args.print_config:
+        print(json.dumps(args.settings, indent=2), flush=True)
+        return
     if not torch.cuda.is_available() or torch.cuda.device_count() != 1:
         raise RuntimeError("Expose exactly one GPU, e.g. CUDA_VISIBLE_DEVICES=3")
     if not torch.cuda.is_bf16_supported():
         raise RuntimeError("This baseline requires a GPU with bfloat16 support")
-    if args.epochs < 1 or args.batch_size < 1 or args.workers < 0:
-        raise ValueError("epochs/batch-size must be positive and workers nonnegative")
-
     output_dir = args.output_dir.resolve()
     if output_dir.exists() and any(output_dir.iterdir()) and args.resume is None:
         raise FileExistsError(f"Output directory is not empty: {output_dir}")
@@ -150,25 +186,26 @@ def main():
     run_training(args, output_dir, run_started)
 
 def run_training(args, output_dir, run_started):
+    settings = args.settings
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.cuda.set_device(0)
     device = torch.device("cuda:0")
     train_loader, val_loader, generator = make_loaders(
-        args.data_root.resolve(), args.batch_size, args.workers, args.seed
+        args.data_root.resolve(), args.batch_size, args.workers, settings["augmentation"]
     )
-    model = build_resnet18().to(device, memory_format=torch.channels_last)
-    criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4)
-    milestones = sorted(set(max(1, round(args.epochs * p)) for p in (1 / 3, 2 / 3, 8 / 9)))
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=milestones, gamma=0.1)
+    model = build_model(**settings["model"]).to(device, memory_format=torch.channels_last)
+    train_criterion, val_criterion = make_criteria(settings["loss"])
+    optimizer = make_optimizer(model.parameters(), settings["optimizer"])
+    scheduler = make_scheduler(optimizer, settings["scheduler"])
 
     start_epoch = 1
     best_top1 = -1.0
     best_top5 = -1.0
     if args.resume is not None:
         checkpoint = torch.load(args.resume, map_location="cpu", weights_only=False)
+        check_resume_config(checkpoint, settings)
         model.load_state_dict(checkpoint["model"])
         optimizer.load_state_dict(checkpoint["optimizer"])
         scheduler.load_state_dict(checkpoint["scheduler"])
@@ -182,9 +219,11 @@ def run_training(args, output_dir, run_started):
         "torchvision": torchvision_version,
         "train_images": len(train_loader.dataset),
         "val_images": len(val_loader.dataset),
-        "model": "torchvision.resnet18(weights=None, num_classes=1000)",
-        "optimizer": "SGD(momentum=0.9, weight_decay=1e-4)",
-        "lr_milestones": milestones,
+        "model": settings["model"]["name"],
+        "optimizer": f"SGD(momentum={settings['optimizer']['momentum']}, "
+                     f"weight_decay={settings['optimizer']['weight_decay']})",
+        "lr_milestones": settings["scheduler"]["milestones"],
+        "scheduler": type(scheduler).__name__,
         "precision": "bfloat16 autocast",
         "gpu": torch.cuda.get_device_name(0),
     }
@@ -194,8 +233,8 @@ def run_training(args, output_dir, run_started):
     for epoch in range(start_epoch, args.epochs + 1):
         generator.manual_seed(args.seed + epoch)
         lr = optimizer.param_groups[0]["lr"]
-        train_loss, train_seconds = train_epoch(model, train_loader, optimizer, criterion, device, epoch)
-        metrics = validate(model, val_loader, criterion, device)
+        train_loss, train_seconds = train_epoch(model, train_loader, optimizer, train_criterion, device, epoch)
+        metrics = validate(model, val_loader, val_criterion, device)
         scheduler.step()
         is_best = metrics["top1"] > best_top1
         if is_best:
@@ -212,6 +251,7 @@ def run_training(args, output_dir, run_started):
             "epoch": epoch, "model": model.state_dict(),
             "optimizer": optimizer.state_dict(), "scheduler": scheduler.state_dict(),
             "best_top1": best_top1, "best_top5": best_top5,
+            "training_config": training_signature(settings),
         }
         save_checkpoint(output_dir / "last.pt", state)
         if is_best:
