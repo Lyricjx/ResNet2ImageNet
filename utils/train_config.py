@@ -19,8 +19,10 @@ FIELDS = {
 }
 STRATEGIES = {
     "optimizer": ("sgd",), "scheduler": ("multistep",),
-    "augmentation": ("basic",), "loss": ("cross_entropy",), "model": ("resnet18",),
+    "augmentation": ("basic",), "loss": ("cross_entropy",),
+    "model": ("resnet18", "resnet18_se"),
 }
+SE_STAGES = ("layer1", "layer2", "layer3", "layer4")
 
 def validate_config(config):
     if not isinstance(config, dict) or set(config) != set(FIELDS):
@@ -29,6 +31,8 @@ def validate_config(config):
         values = config[section]
         if not isinstance(values, dict):
             raise ValueError(f"[{section}] must be a table")
+        if section == "model" and values.get("name") == "resnet18_se":
+            fields = fields | {"reduction", "stages"}
         missing, unknown = fields - values.keys(), values.keys() - fields
         if missing or unknown:
             raise ValueError(f"[{section}]: missing={sorted(missing)}, unknown={sorted(unknown)}")
@@ -76,6 +80,12 @@ def validate_config(config):
     pair("crop_scale", 0, 1)
     pair("crop_ratio", 0)
     number("augmentation", "horizontal_flip", 0, 1)
+    if config["model"]["name"] == "resnet18_se":
+        number("model", "reduction", 1, 64, integer=True)
+        stages = config["model"]["stages"]
+        if (not isinstance(stages, list) or not stages
+                or stages != [stage for stage in SE_STAGES if stage in stages]):
+            raise ValueError(f"model.stages must be an ordered nonempty subset of {SE_STAGES}")
 
 def parse_training_args(argv=None):
     parser = argparse.ArgumentParser(description="Train ResNet-18 using a YAML configuration file.")
