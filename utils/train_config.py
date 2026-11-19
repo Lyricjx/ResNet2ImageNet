@@ -15,11 +15,12 @@ FIELDS = {
     "scheduler": {"name", "milestones", "gamma"},
     "augmentation": {"name", "crop_scale", "crop_ratio", "horizontal_flip"},
     "loss": {"name"},
-    "model": {"name"},
+    "model": {"name", "filter"},
 }
 STRATEGIES = {
     "optimizer": ("sgd",), "scheduler": ("multistep",),
-    "augmentation": ("basic",), "loss": ("cross_entropy",), "model": ("resnet18",),
+    "augmentation": ("basic",), "loss": ("cross_entropy",),
+    "model": ("resnet18", "resnet18_blurpool"),
 }
 
 def validate_config(config):
@@ -29,13 +30,20 @@ def validate_config(config):
         values = config[section]
         if not isinstance(values, dict):
             raise ValueError(f"[{section}] must be a table")
-        missing, unknown = fields - values.keys(), values.keys() - fields
+        required = {"name"} if section == "model" else fields
+        missing, unknown = required - values.keys(), values.keys() - fields
         if missing or unknown:
             raise ValueError(f"[{section}]: missing={sorted(missing)}, unknown={sorted(unknown)}")
     for section, supported in STRATEGIES.items():
         if config[section]["name"] not in supported:
             raise ValueError(f"Unsupported {section}.name: {config[section]['name']}; "
                              f"implemented: {', '.join(supported)}")
+    model = config["model"]
+    if model["name"] == "resnet18_blurpool":
+        if model.get("filter") not in ("binomial3", "box3", "binomial5"):
+            raise ValueError("model.filter must be binomial3, box3, or binomial5")
+    elif "filter" in model:
+        raise ValueError("model.filter is only valid for resnet18_blurpool")
 
     def number(section, key, minimum, maximum=math.inf, integer=False):
         value = config[section][key]
