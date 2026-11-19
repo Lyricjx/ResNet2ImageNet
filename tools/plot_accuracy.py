@@ -10,17 +10,19 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from utils import plot_accuracy_multirun
 
 if __name__ == "__main__":
-    log_dir = "."  # 路径相对仓库根目录，也可填写本机绝对路径
-
-    """单份日志"""
-    log_list = ["baseline.log"]
-    savename = "runs/plots/baseline_accuracy"
-
     """多份日志对比"""
-    # log_list = ["baseline.log", "improved.log"]
-    # savename = "runs/plots/accuracy_comparison"
+    log_dir = "/mnt/shareEEEx/xieyuankai/ResNet2ImageNet/runs/personal"
+    log_list = [
+        "C1_seed16/train.log",
+        "C2_seed16/train.log",
+        "C3_seed16/train.log",
+        "C0_seed16/train.log",
+    ]
+    savename = "runs/plots/label_smoothing_accuracy_comparison"
 
     plot_accuracy_multirun(
         PROJECT_ROOT / log_dir, log_list, PROJECT_ROOT / savename,
         title="ResNet-18 Validation Accuracy",
+        run_labels=["C1", "C2", "C3", "C0"],
+        zoom_start=60,
     )
