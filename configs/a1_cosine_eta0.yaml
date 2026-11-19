@@ -1,0 +1,31 @@
+run:
+  data_root: data/imagenet_10pct
+  output_dir: runs/resnet18_a1_cosine_eta0_seed16
+  epochs: 90
+  batch_size: 256
+  workers: 8
+  seed: 16
+  resume: ""
+
+optimizer:
+  name: sgd
+  lr: 0.1
+  momentum: 0.9
+  weight_decay: 0.0001
+
+scheduler:
+  name: cosine
+  t_max: 90
+  eta_min: 0
+
+augmentation:
+  name: basic
+  crop_scale: [0.08, 1.0]
+  crop_ratio: [0.75, 1.3333333333333333]
+  horizontal_flip: 0.5
+
+loss:
+  name: cross_entropy
+
+model:
+  name: resnet18
