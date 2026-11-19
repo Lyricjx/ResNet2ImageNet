@@ -12,24 +12,40 @@ DEFAULT_CONFIG = PROJECT_ROOT / "configs" / "baseline.yaml"
 FIELDS = {
     "run": {"data_root", "output_dir", "epochs", "batch_size", "workers", "seed", "resume"},
     "optimizer": {"name", "lr", "momentum", "weight_decay"},
-    "scheduler": {"name", "milestones", "gamma"},
+    "scheduler": {"name"},
     "augmentation": {"name", "crop_scale", "crop_ratio", "horizontal_flip"},
     "loss": {"name"},
     "model": {"name"},
 }
 STRATEGIES = {
-    "optimizer": ("sgd",), "scheduler": ("multistep",),
-    "augmentation": ("basic",), "loss": ("cross_entropy",), "model": ("resnet18",),
+    "optimizer": ("sgd",), "scheduler": ("multistep", "cosine"),
+    "augmentation": ("basic", "randaugment", "random_erasing"),
+    "loss": ("cross_entropy",), "model": ("resnet18",),
+}
+STRATEGY_FIELDS = {
+    "scheduler": {
+        "multistep": {"milestones", "gamma"},
+        "cosine": {"t_max", "eta_min"},
+    },
+    "augmentation": {
+        "basic": set(),
+        "randaugment": {"num_ops", "magnitude"},
+        "random_erasing": {"p", "scale", "ratio", "value"},
+    },
 }
 
 def validate_config(config):
     if not isinstance(config, dict) or set(config) != set(FIELDS):
         raise ValueError(f"Config sections must be: {', '.join(FIELDS)}")
-    for section, fields in FIELDS.items():
+    for section, base_fields in FIELDS.items():
         values = config[section]
         if not isinstance(values, dict):
             raise ValueError(f"[{section}] must be a table")
-        missing, unknown = fields - values.keys(), values.keys() - fields
+        name = values.get("name")
+        extra_fields = STRATEGY_FIELDS.get(section, {})
+        fields = base_fields | (extra_fields.get(name, set()) if isinstance(name, str) else set())
+        allowed = fields | ({"label_smoothing"} if section == "loss" else set())
+        missing, unknown = fields - values.keys(), values.keys() - allowed
         if missing or unknown:
             raise ValueError(f"[{section}]: missing={sorted(missing)}, unknown={sorted(unknown)}")
     for section, supported in STRATEGIES.items():
@@ -65,17 +81,32 @@ def validate_config(config):
     number("optimizer", "momentum", 0, 1)
     number("optimizer", "weight_decay", 0)
     scheduler = config["scheduler"]
-    number("scheduler", "gamma", 0, 1)
-    if scheduler["gamma"] == 0:
-        raise ValueError("scheduler.gamma must be positive")
-    milestones = scheduler["milestones"]
-    if (not isinstance(milestones, list)
-            or any(type(v) is not int or v < 1 for v in milestones)
-            or milestones != sorted(set(milestones))):
-        raise ValueError("scheduler.milestones must be a strictly increasing list of positive epochs")
+    if scheduler["name"] == "multistep":
+        number("scheduler", "gamma", 0, 1)
+        if scheduler["gamma"] == 0:
+            raise ValueError("scheduler.gamma must be positive")
+        milestones = scheduler["milestones"]
+        if (not isinstance(milestones, list)
+                or any(type(v) is not int or v < 1 for v in milestones)
+                or milestones != sorted(set(milestones))):
+            raise ValueError("scheduler.milestones must be a strictly increasing list of positive epochs")
+    else:
+        number("scheduler", "t_max", 1, integer=True)
+        number("scheduler", "eta_min", 0, config["optimizer"]["lr"])
     pair("crop_scale", 0, 1)
     pair("crop_ratio", 0)
     number("augmentation", "horizontal_flip", 0, 1)
+    augmentation = config["augmentation"]
+    if augmentation["name"] == "randaugment":
+        number("augmentation", "num_ops", 1, integer=True)
+        number("augmentation", "magnitude", 0, 30, integer=True)
+    elif augmentation["name"] == "random_erasing":
+        number("augmentation", "p", 0, 1)
+        pair("scale", 0, 1)
+        pair("ratio", 0)
+        number("augmentation", "value", -math.inf)
+    if "label_smoothing" in config["loss"]:
+        number("loss", "label_smoothing", 0, 1)
 
 def parse_training_args(argv=None):
     parser = argparse.ArgumentParser(description="Train ResNet-18 using a YAML configuration file.")
@@ -105,7 +136,7 @@ def parse_training_args(argv=None):
                 config["run"][name] = str((PROJECT_ROOT / value).resolve())
         scheduler = config["scheduler"]
         epochs = config["run"]["epochs"]
-        if not scheduler["milestones"]:
+        if scheduler["name"] == "multistep" and not scheduler["milestones"]:
             scheduler["milestones"] = sorted(set(max(1, round(epochs * p)) for p in (1 / 3, 2 / 3, 8 / 9)))
     except (OSError, ValueError, yaml.YAMLError) as error:
         parser.error(str(error))

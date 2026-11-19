@@ -31,4 +31,4 @@ loss:
 model:
   name: resnet18
 
-# 当前仅实现以上 Baseline 策略。新增策略需先扩展对应的构建函数。
+# A/B/C 消融实验使用 configs/ 下各自的 YAML；本文件保持原始 Baseline 参数。

@@ -21,14 +21,24 @@ MEAN = (0.485, 0.456, 0.406)
 STD = (0.229, 0.224, 0.225)
 
 def make_transforms(augmentation):
-    if augmentation["name"] != "basic":
+    name = augmentation["name"]
+    if name not in ("basic", "randaugment", "random_erasing"):
         raise ValueError(f"Unsupported augmentation: {augmentation['name']}; implement it in make_transforms")
     train_steps = [
         transforms.RandomResizedCrop(224, scale=tuple(augmentation["crop_scale"]),
                                      ratio=tuple(augmentation["crop_ratio"])),
         transforms.RandomHorizontalFlip(p=augmentation["horizontal_flip"]),
     ]
+    if name == "randaugment":
+        train_steps.append(transforms.RandAugment(
+            num_ops=augmentation["num_ops"], magnitude=augmentation["magnitude"],
+        ))
     train_steps.extend([transforms.ToTensor(), transforms.Normalize(MEAN, STD)])
+    if name == "random_erasing":
+        train_steps.append(transforms.RandomErasing(
+            p=augmentation["p"], scale=tuple(augmentation["scale"]),
+            ratio=tuple(augmentation["ratio"]), value=augmentation["value"],
+        ))
     train_transform = transforms.Compose(train_steps)
     val_transform = transforms.Compose([
         transforms.Resize(256),
@@ -67,12 +77,17 @@ def make_scheduler(optimizer, scheduler_config):
         return torch.optim.lr_scheduler.MultiStepLR(
             optimizer, milestones=scheduler_config["milestones"], gamma=scheduler_config["gamma"],
         )
+    if scheduler_config["name"] == "cosine":
+        return torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=scheduler_config["t_max"], eta_min=scheduler_config["eta_min"],
+        )
     raise ValueError(f"Unsupported scheduler: {scheduler_config['name']}; implement it in make_scheduler")
 
 def make_criteria(loss_config):
     if loss_config["name"] != "cross_entropy":
         raise ValueError(f"Unsupported loss: {loss_config['name']}; implement it in make_criteria")
-    return nn.CrossEntropyLoss(), nn.CrossEntropyLoss()
+    return (nn.CrossEntropyLoss(label_smoothing=loss_config.get("label_smoothing", 0.0)),
+            nn.CrossEntropyLoss())
 
 def check_resume_config(checkpoint, settings):
     saved_config = checkpoint.get("training_config")
@@ -222,7 +237,7 @@ def run_training(args, output_dir, run_started):
         "model": settings["model"]["name"],
         "optimizer": f"SGD(momentum={settings['optimizer']['momentum']}, "
                      f"weight_decay={settings['optimizer']['weight_decay']})",
-        "lr_milestones": settings["scheduler"]["milestones"],
+        "lr_milestones": settings["scheduler"].get("milestones"),
         "scheduler": type(scheduler).__name__,
         "precision": "bfloat16 autocast",
         "gpu": torch.cuda.get_device_name(0),
