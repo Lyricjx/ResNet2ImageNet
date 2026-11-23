@@ -3,9 +3,9 @@ A controlled ImageNet-1K classification study with ResNet-18 as the baseline. So
 
 ## 代码来源与改动范围
 
-- **模型基线来源：**`model/resnet18.py` 调用 [Torchvision ResNet-18 v0.27.0](https://github.com/pytorch/vision/blob/v0.27.0/torchvision/models/resnet.py)，使用 `weights=None` 从头训练 1,000 类分类器；不加载预训练权重。仓库最初的 ResNet-18 基线训练实现对应 commit `52c0f96`。
-- **本仓库的改动：**`tools/train.py` 和 `utils/train_config.py` 提供统一训练入口、配置校验、学习率策略、训练时增强和标签平滑；`configs/` 中的 A/B/C 配置只改变相应消融变量；`tools/plot_loss.py` 与 `tools/plot_accuracy.py` 绘制实验曲线。当前 `main` 的 `model/resnet18.py` 仍使用原版 Torchvision ResNet-18。SE 与固定滤波下采样代码分别在 `ResNet2ImageNet2`、`ResNet2ImageNet3` 分支，**不属于当前 `main` 的训练入口**。
-- **关键代码/配置提交：**训练策略扩展 `5682c39`；A/B/C 配置分别为 `7d34575`、`6af0e78`、`52ea667`；SE 和滤波分支的实现分别为 `84faacb`、`30289ce`。
+- **模型基线来源：** `model/resnet18.py` 调用 [Torchvision ResNet-18 v0.27.0](https://github.com/pytorch/vision/blob/v0.27.0/torchvision/models/resnet.py)，使用 `weights=None` 从头训练 1,000 类分类器；不加载预训练权重。仓库最初的 ResNet-18 基线训练实现对应 commit `52c0f96`。
+- **本仓库的改动：** `tools/train.py` 和 `utils/train_config.py` 提供统一训练入口、配置校验、学习率策略、训练时增强和标签平滑；`configs/` 中的 A/B/C 配置只改变相应消融变量；`tools/plot_loss.py` 与 `tools/plot_accuracy.py` 绘制实验曲线。当前 `main` 的 `model/resnet18.py` 仍使用原版 Torchvision ResNet-18。SE 与固定滤波下采样代码分别在 `ResNet2ImageNet2`、`ResNet2ImageNet3` 分支，**不属于当前 `main` 的训练入口**。
+- **关键代码/配置提交：** 训练策略扩展 `5682c39`；A/B/C 配置分别为 `7d34575`、`6af0e78`、`52ea667`；SE 和滤波分支的实现分别为 `84faacb`、`30289ce`。
 
 ## 环境配置
 
