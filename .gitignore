@@ -9,6 +9,7 @@
 *.pdf
 .idea
 *.csv
+!/supplements/*.pdf
 /data/
 /runs/
 __pycache__/
